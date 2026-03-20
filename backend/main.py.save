@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+CAN Tfrom fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import random
 
@@ -47,3 +47,4 @@ def history():
         {"date": "2008-09", "value": 100},
         {"date": "2009-01", "value": 40},
     ]
+
