@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   LineChart,
   Line,
@@ -10,24 +11,6 @@ import {
   ReferenceLine,
 } from "recharts";
 
-// --------------------
-// DATA
-// --------------------
-const data = [
-  { date: "2007-07-01", state: 0.02, threshold: 0.03 },
-  { date: "2007-08-09", state: 0.05, threshold: 0.03 },
-  { date: "2007-10-01", state: 0.035, threshold: 0.03 },
-  { date: "2008-01-01", state: 0.04, threshold: 0.03 },
-  { date: "2008-03-16", state: 0.06, threshold: 0.03 },
-  { date: "2008-06-01", state: 0.03, threshold: 0.03 },
-  { date: "2008-09-15", state: 0.09, threshold: 0.03 },
-  { date: "2008-10-10", state: 0.08, threshold: 0.03 },
-  { date: "2008-12-01", state: 0.07, threshold: 0.03 },
-];
-
-// --------------------
-// EVENTS
-// --------------------
 const events = [
   { date: "2007-08-09", label: "Credit Stress" },
   { date: "2008-03-16", label: "Bear Stearns" },
@@ -35,72 +18,68 @@ const events = [
   { date: "2008-10-10", label: "Global Panic" },
 ];
 
-// --------------------
-// COMPONENT
-// --------------------
 export default function Home() {
+  const [global, setGlobal] = useState<any>(null);
+  const [sectors, setSectors] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/global")
+      .then((res) => res.json())
+      .then(setGlobal);
+
+    fetch("http://127.0.0.1:8000/sectors")
+      .then((res) => res.json())
+      .then(setSectors);
+
+    fetch("http://127.0.0.1:8000/history")
+      .then((res) => res.json())
+      .then(setHistory);
+  }, []);
+
+  if (!global || !sectors) return <div style={{ padding: 20 }}>Loading...</div>;
+
   return (
     <div style={{ padding: 30, fontFamily: "Arial, sans-serif" }}>
-      
-      {/* TITLE */}
       <h1 style={{ fontSize: 32, fontWeight: "bold" }}>
         Recursive Instability Engine
       </h1>
 
-      {/* -------------------- */}
       {/* GAUGES */}
-      {/* -------------------- */}
-      <div
-        style={{
-          display: "flex",
-          gap: 40,
-          marginTop: 30,
-          marginBottom: 40,
-        }}
-      >
+      <div style={{ display: "flex", gap: 40, marginTop: 30 }}>
         <div>
           <h3>Global</h3>
-          <p style={{ fontSize: 36, fontWeight: "bold" }}>71%</p>
-          <p style={{ color: "red" }}>Critical</p>
-          <p>State: 0.0244</p>
-          <p>Threshold: 0.0343</p>
+          <p style={{ fontSize: 36 }}>{global.value}%</p>
+          <p style={{ color: "red" }}>{global.status}</p>
+          <p>State: {global.state}</p>
+          <p>Threshold: {global.threshold}</p>
         </div>
 
-        <div>
-          <h3>Semiconductors</h3>
-          <p style={{ fontSize: 32 }}>100%</p>
-          <p style={{ color: "red" }}>Critical</p>
-        </div>
-
-        <div>
-          <h3>Crypto</h3>
-          <p style={{ fontSize: 32 }}>12.7%</p>
-          <p style={{ color: "green" }}>Calm</p>
-        </div>
-
-        <div>
-          <h3>Megacap</h3>
-          <p style={{ fontSize: 32 }}>100%</p>
-          <p style={{ color: "red" }}>Critical</p>
-        </div>
+        {Object.entries(sectors).map(([key, val]: any) => (
+          <div key={key}>
+            <h3>{key}</h3>
+            <p style={{ fontSize: 32 }}>{val.value}%</p>
+            <p style={{ color: val.status === "Critical" ? "red" : "green" }}>
+              {val.status}
+            </p>
+          </div>
+        ))}
       </div>
 
-      {/* -------------------- */}
       {/* CHART */}
-      {/* -------------------- */}
-      <h2 style={{ marginBottom: 10 }}>Historical Instability</h2>
+      <h2 style={{ marginTop: 40 }}>Historical Instability</h2>
 
       <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={data}>
-          <XAxis dataKey="date" />
-          <YAxis />
+        <LineChart data={history}>
+          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+          <YAxis domain={[0, 0.1]} />
           <Tooltip />
 
-          {/* 🔴 INSTABILITY BREACH SHADING */}
-          {data.map((d, i) =>
+          {/* BREACH SHADING */}
+          {history.map((d, i) =>
             d.state > d.threshold ? (
               <ReferenceLine
-                key={`breach-${i}`}
+                key={`b-${i}`}
                 x={d.date}
                 stroke="rgba(255,0,0,0.15)"
                 strokeWidth={12}
@@ -114,6 +93,7 @@ export default function Home() {
             dataKey="state"
             stroke="#2563eb"
             strokeWidth={3}
+            name="Instability State"
           />
 
           {/* THRESHOLD */}
@@ -122,12 +102,13 @@ export default function Home() {
             dataKey="threshold"
             stroke="#dc2626"
             strokeWidth={2}
+            name="Critical Threshold"
           />
 
           {/* EVENTS */}
           {events.map((event, index) => (
             <ReferenceLine
-              key={`event-${index}`}
+              key={`e-${index}`}
               x={event.date}
               stroke="red"
               strokeDasharray="3 3"
