@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.save
+
+# Node
+node_modules/
+
+# Next.js
+.next/
+
+# Env
+.env
