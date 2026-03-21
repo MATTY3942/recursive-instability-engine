@@ -1,37 +1,53 @@
 "use client";
-
 import { useEffect, useState } from "react";
 
-export default function Page() {
-  const [data, setData] = useState<any>(null);
+export default function Home() {
+  const [global, setGlobal] = useState(null);
+  const [sectors, setSectors] = useState([]);
+  const [history, setHistory] = useState([]);
 
   useEffect(() => {
     fetch("http://127.0.0.1:8000/global")
-      .then((res) => res.json())
-      .then((d) => setData(d))
-      .catch((err) => console.error(err));
+      .then(res => res.json())
+      .then(setGlobal);
+
+    fetch("http://127.0.0.1:8000/sectors")
+      .then(res => res.json())
+      .then(setSectors);
+
+    fetch("http://127.0.0.1:8000/history")
+      .then(res => res.json())
+      .then(setHistory);
   }, []);
 
-  if (!data) {
-    return <div style={{ padding: 40 }}>Loading...</div>;
-  }
+  if (!global) return <div>Loading...</div>;
 
   return (
-    <main style={{ padding: 40, fontFamily: "Arial" }}>
+    <div style={{ padding: 20 }}>
       <h1>Recursive Instability Engine</h1>
 
       <h2>Global</h2>
+      <div>{global.value}% - {global.status}</div>
+      <div>State: {global.state}</div>
+      <div>Threshold: {global.threshold}</div>
 
-      <div style={{ fontSize: 40, fontWeight: "bold" }}>
-        {data.value}%
+      <h2 style={{ marginTop: 30 }}>Sectors</h2>
+      <div style={{ display: "flex", gap: 20 }}>
+        {sectors.map((s, i) => (
+          <div key={i} style={{ padding: 10, border: "1px solid #ccc" }}>
+            <h3>{s.name}</h3>
+            <div>{s.value}%</div>
+            <div>{s.status}</div>
+            <div>State: {s.state}</div>
+            <div>Threshold: {s.threshold}</div>
+          </div>
+        ))}
       </div>
 
-      <div style={{ color: "red", fontSize: 20 }}>
-        {data.status}
-      </div>
-
-      <div>State: {data.state}</div>
-      <div>Threshold: {data.threshold}</div>
-    </main>
+      <h2 style={{ marginTop: 30 }}>Historical Instability</h2>
+      <pre style={{ fontSize: 10 }}>
+        {JSON.stringify(history.slice(0, 10), null, 2)}
+      </pre>
+    </div>
   );
 }
