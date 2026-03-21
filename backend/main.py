@@ -1,10 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import random
+import yfinance as yf
 
 app = FastAPI()
 
-# Allow frontend access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,10 +12,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- GLOBAL INSTABILITY ---
+# --- REAL SIGNALS ---
+def get_real_signals():
+    try:
+        vix = yf.Ticker("^VIX").history(period="1d")["Close"].iloc[-1]
+        tnx = yf.Ticker("^TNX").history(period="1d")["Close"].iloc[-1]
+
+        vix_norm = min(vix / 40, 1)
+        rate_norm = min(tnx / 5, 1)
+
+        return {
+            "vix": float(vix),
+            "vix_norm": float(vix_norm),
+            "rate_norm": float(rate_norm)
+        }
+    except:
+        return {
+            "vix": 20,
+            "vix_norm": 0.5,
+            "rate_norm": 0.5
+        }
+
+# --- GLOBAL ---
 @app.get("/global")
 def get_global():
-    state = round(random.uniform(0.02, 0.03), 4)
+    signals = get_real_signals()
+
+    state = round(0.015 + 0.02 * signals["vix_norm"] + 0.01 * signals["rate_norm"], 4)
     threshold = 0.03
 
     value = round((state / threshold) * 100, 1)
@@ -26,51 +48,27 @@ def get_global():
         "value": value,
         "state": state,
         "threshold": threshold,
-        "status": status
+        "status": status,
+        "vix": signals["vix"]
     }
 
-# --- SECTOR INSTABILITY ---
+# --- SECTORS (still mock for now) ---
 @app.get("/sectors")
 def get_sectors():
-    sectors = [
-        {
-            "name": "Semiconductors",
-            "state": round(random.uniform(0.005, 0.02), 4),
-            "threshold": 0.0324
-        },
-        {
-            "name": "Crypto",
-            "state": round(random.uniform(0.04, 0.07), 4),
-            "threshold": 0.0408
-        },
-        {
-            "name": "Megacap",
-            "state": round(random.uniform(0.045, 0.065), 4),
-            "threshold": 0.0497
-        }
+    return [
+        {"name": "Semiconductors", "value": 60, "status": "Watch", "state": 0.02, "threshold": 0.0324},
+        {"name": "Crypto", "value": 90, "status": "Critical", "state": 0.05, "threshold": 0.0408},
+        {"name": "Megacap", "value": 95, "status": "Critical", "state": 0.047, "threshold": 0.0497},
     ]
 
-    for s in sectors:
-        s["value"] = round((s["state"] / s["threshold"]) * 100, 1)
-        s["status"] = "Critical" if s["state"] > s["threshold"] else "Watch"
-
-    return sectors
-
-# --- HISTORICAL DATA ---
+# --- HISTORY (still mock for now) ---
 @app.get("/history")
 def get_history():
-    data = []
-    threshold = 0.03
-
-    for i in range(50):
-        state = round(0.02 + random.uniform(-0.01, 0.015), 4)
-        data.append({
-            "date": f"T{i}",
-            "state": state,
-            "threshold": threshold
-        })
-
-    return data
+    return [
+        {"date": "T1", "state": 0.02, "threshold": 0.03},
+        {"date": "T2", "state": 0.025, "threshold": 0.03},
+        {"date": "T3", "state": 0.028, "threshold": 0.03},
+    ]
 
 # --- ROOT ---
 @app.get("/")
