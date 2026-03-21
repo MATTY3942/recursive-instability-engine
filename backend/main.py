@@ -4,6 +4,7 @@ import yfinance as yf
 
 app = FastAPI()
 
+# Allow frontend access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -12,8 +13,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- REAL SIGNALS ---
-def get_real_signals():
+# --- GLOBAL SIGNALS (VIX + Rates) ---
+def get_global_signals():
     try:
         vix = yf.Ticker("^VIX").history(period="1d")["Close"].iloc[-1]
         tnx = yf.Ticker("^TNX").history(period="1d")["Close"].iloc[-1]
@@ -33,10 +34,34 @@ def get_real_signals():
             "rate_norm": 0.5
         }
 
-# --- GLOBAL ---
+# --- SECTOR SIGNALS (REAL MARKET DATA) ---
+def get_sector_signals():
+    try:
+        nvda = yf.Ticker("NVDA").history(period="5d")["Close"]
+        btc = yf.Ticker("BTC-USD").history(period="5d")["Close"]
+        aapl = yf.Ticker("AAPL").history(period="5d")["Close"]
+
+        def compute_state(series):
+            returns = series.pct_change().dropna()
+            volatility = returns.std()
+            return float(volatility)
+
+        return {
+            "Semiconductors": compute_state(nvda),
+            "Crypto": compute_state(btc),
+            "Megacap": compute_state(aapl)
+        }
+    except:
+        return {
+            "Semiconductors": 0.02,
+            "Crypto": 0.05,
+            "Megacap": 0.03
+        }
+
+# --- GLOBAL ENDPOINT ---
 @app.get("/global")
 def get_global():
-    signals = get_real_signals()
+    signals = get_global_signals()
 
     state = round(0.015 + 0.02 * signals["vix_norm"] + 0.01 * signals["rate_norm"], 4)
     threshold = 0.03
@@ -52,16 +77,35 @@ def get_global():
         "vix": signals["vix"]
     }
 
-# --- SECTORS (still mock for now) ---
+# --- SECTORS ENDPOINT ---
 @app.get("/sectors")
 def get_sectors():
-    return [
-        {"name": "Semiconductors", "value": 60, "status": "Watch", "state": 0.02, "threshold": 0.0324},
-        {"name": "Crypto", "value": 90, "status": "Critical", "state": 0.05, "threshold": 0.0408},
-        {"name": "Megacap", "value": 95, "status": "Critical", "state": 0.047, "threshold": 0.0497},
-    ]
+    signals = get_sector_signals()
 
-# --- HISTORY (still mock for now) ---
+    thresholds = {
+        "Semiconductors": 0.03,
+        "Crypto": 0.04,
+        "Megacap": 0.035
+    }
+
+    sectors = []
+
+    for name, state in signals.items():
+        threshold = thresholds[name]
+        value = round((state / threshold) * 100, 1)
+        status = "Critical" if state > threshold else "Watch"
+
+        sectors.append({
+            "name": name,
+            "value": value,
+            "state": round(state, 4),
+            "threshold": threshold,
+            "status": status
+        })
+
+    return sectors
+
+# --- HISTORY (still simple for now) ---
 @app.get("/history")
 def get_history():
     return [
