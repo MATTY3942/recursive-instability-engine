@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 from collections import deque
+import random
 
 app = FastAPI()
 
@@ -13,12 +14,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- MEMORY ---
+# ---------------- MEMORY ----------------
 live_systemic_history = deque(maxlen=120)
 tick_counter = 0
 
-
-# --- GLOBAL SIGNALS ---
+# ---------------- GLOBAL SIGNALS ----------------
 def get_global_signals():
     try:
         vix = yf.Ticker("^VIX").history(period="1d")["Close"].iloc[-1]
@@ -32,8 +32,7 @@ def get_global_signals():
     except:
         return {"vix": 20, "vix_norm": 0.5, "rate_norm": 0.5}
 
-
-# --- SECTOR SIGNALS ---
+# ---------------- SECTOR SIGNALS ----------------
 def get_sector_signals():
     try:
         nvda = yf.Ticker("NVDA").history(period="5d")["Close"]
@@ -51,8 +50,7 @@ def get_sector_signals():
     except:
         return {"Semiconductors": 0.02, "Crypto": 0.05, "Megacap": 0.03}
 
-
-# --- GLOBAL ---
+# ---------------- GLOBAL ----------------
 def calculate_global():
     s = get_global_signals()
 
@@ -67,8 +65,7 @@ def calculate_global():
         "vix": s["vix"],
     }
 
-
-# --- SECTORS ---
+# ---------------- SECTORS ----------------
 def calculate_sectors():
     signals = get_sector_signals()
 
@@ -90,8 +87,7 @@ def calculate_sectors():
         })
     return out
 
-
-# --- HISTORY UPDATE ---
+# ---------------- HISTORY UPDATE ----------------
 def update_history(state):
     global tick_counter
     tick_counter += 1
@@ -100,8 +96,7 @@ def update_history(state):
         "state": round(state, 4)
     })
 
-
-# --- VELOCITY ---
+# ---------------- VELOCITY ----------------
 def compute_velocity():
     if len(live_systemic_history) < 3:
         return 0.0
@@ -110,33 +105,24 @@ def compute_velocity():
     s2 = live_systemic_history[-2]["state"]
     s3 = live_systemic_history[-3]["state"]
 
-    v1 = s1 - s2
-    v2 = s2 - s3
+    return round((s1 - s2) * 0.7 + (s2 - s3) * 0.3, 4)
 
-    return round((0.7 * v1 + 0.3 * v2), 4)
-
-
-# --- ACCELERATION ---
+# ---------------- ACCELERATION ----------------
 def compute_acceleration():
     if len(live_systemic_history) < 4:
         return 0.0
 
-    s1 = live_systemic_history[-1]["state"]
-    s2 = live_systemic_history[-2]["state"]
-    s3 = live_systemic_history[-3]["state"]
-    s4 = live_systemic_history[-4]["state"]
+    s = [x["state"] for x in list(live_systemic_history)[-4:]]
+    v1 = s[3] - s[2]
+    v2 = s[2] - s[1]
+    v3 = s[1] - s[0]
 
-    v1 = s1 - s2
-    v2 = s2 - s3
-    v3 = s3 - s4
-
-    recent = (0.7 * v1 + 0.3 * v2)
-    prior = (0.7 * v2 + 0.3 * v3)
+    recent = 0.7 * v1 + 0.3 * v2
+    prior = 0.7 * v2 + 0.3 * v3
 
     return round(recent - prior, 4)
 
-
-# --- TIME TO THRESHOLD ---
+# ---------------- TIME TO THRESHOLD ----------------
 def time_to_threshold(state, threshold, velocity):
     if velocity <= 0:
         return None
@@ -145,40 +131,71 @@ def time_to_threshold(state, threshold, velocity):
         return 0
     return round(gap / velocity, 2)
 
-
-# --- ALERT CLASSIFICATION ---
-def classify(state, threshold, velocity, acceleration):
-    if state >= threshold:
+# ---------------- HELPERS ----------------
+def classify(systemic_state, threshold, velocity, acceleration):
+    if systemic_state >= threshold:
         return "Systemic Crisis"
     if acceleration > 0.002 and velocity > 0:
         return "Shock Acceleration"
-    if state >= threshold * 0.85 and velocity > 0:
+    if systemic_state >= threshold * 0.85 and velocity > 0:
         return "Pre-Crisis Warning"
     if velocity > 0:
         return "Escalating"
     return "Contained"
 
+def trend_from_motion(velocity):
+    if velocity > 0.001:
+        return "Rising"
+    if velocity < -0.001:
+        return "Falling"
+    return "Plateau"
 
-# --- SYSTEMIC ---
-def calculate_systemic():
-    g = calculate_global()
-    s = calculate_sectors()
+def latent_instability(systemic_state, threshold, velocity, acceleration):
+    if systemic_state >= threshold * 0.95 and abs(velocity) < 0.001:
+        return {
+            "flag": True,
+            "level": "High",
+            "message": "System is critically poised near instability boundary"
+        }
+    if systemic_state >= threshold * 0.85:
+        return {
+            "flag": True,
+            "level": "Moderate",
+            "message": "System is elevated and storing stress"
+        }
+    return {
+        "flag": False,
+        "level": "Low",
+        "message": "No latent instability detected"
+    }
 
-    global_state = g["state"]
-    avg_sector = sum(x["state"] for x in s) / len(s)
+def compare_to_2008(systemic_state, threshold, acceleration):
+    if acceleration > 0.002:
+        return "Crisis acceleration (Lehman-like)"
+    if systemic_state >= threshold * 0.9:
+        return "Late-cycle stress (pre-Lehman)"
+    return "No crisis-like acceleration"
 
+def build_systemic_payload(global_state, avg_sector, threshold=0.05, add_noise=True):
     alignment = avg_sector / global_state if global_state > 0 else 0
-    systemic_state = round(global_state * (1 + alignment), 4)
+    base = global_state * (1 + alignment)
+    noise = random.uniform(-0.0005, 0.0005) if add_noise else 0.0
+    systemic_state = round(base + noise, 4)
 
-    threshold = 0.05
-
-    update_history(systemic_state)
-
-    velocity = compute_velocity()
-    acceleration = compute_acceleration()
+    velocity = compute_velocity() if add_noise else 0.0
+    acceleration = compute_acceleration() if add_noise else 0.0
     ttt = time_to_threshold(systemic_state, threshold, velocity)
 
     status = classify(systemic_state, threshold, velocity, acceleration)
+    trend = trend_from_motion(velocity)
+    latent = latent_instability(systemic_state, threshold, velocity, acceleration)
+
+    drivers = {
+        "volatility": round(global_state, 4),
+        "concentration": round(alignment * 0.02, 4),
+        "liquidity": round(0.01 + global_state * 0.3, 4),
+        "divergence": round(abs(global_state - avg_sector), 4),
+    }
 
     return {
         "value": round((systemic_state / threshold) * 100, 1),
@@ -188,43 +205,123 @@ def calculate_systemic():
         "velocity": velocity,
         "acceleration": acceleration,
         "time_to_threshold": ttt,
+        "time_signal": (
+            "Already beyond threshold"
+            if ttt == 0 else
+            "No immediate breach trajectory"
+            if ttt is None else
+            f"Estimated breach in {ttt} ticks"
+        ),
+        "trend": trend,
+        "comparison_2008": compare_to_2008(systemic_state, threshold, acceleration),
+        "interpretation": "Instability driven by concentration (alignment) and volatility regime.",
+        "drivers": drivers,
+        "latent": latent,
         "alignment": round(alignment, 2),
     }
 
+# ---------------- SYSTEMIC ----------------
+def calculate_systemic():
+    g = calculate_global()
+    s = calculate_sectors()
 
-# --- API ---
+    global_state = g["state"]
+    avg_sector = sum(x["state"] for x in s) / len(s)
+
+    payload = build_systemic_payload(global_state, avg_sector, threshold=0.05, add_noise=True)
+
+    update_history(payload["state"])
+    payload["velocity"] = compute_velocity()
+    payload["acceleration"] = compute_acceleration()
+
+    ttt = time_to_threshold(payload["state"], payload["threshold"], payload["velocity"])
+    payload["time_to_threshold"] = ttt
+    payload["time_signal"] = (
+        "Already beyond threshold"
+        if ttt == 0 else
+        "No immediate breach trajectory"
+        if ttt is None else
+        f"Estimated breach in {ttt} ticks"
+    )
+    payload["status"] = classify(
+        payload["state"], payload["threshold"], payload["velocity"], payload["acceleration"]
+    )
+    payload["trend"] = trend_from_motion(payload["velocity"])
+    payload["comparison_2008"] = compare_to_2008(
+        payload["state"], payload["threshold"], payload["acceleration"]
+    )
+    payload["latent"] = latent_instability(
+        payload["state"], payload["threshold"], payload["velocity"], payload["acceleration"]
+    )
+
+    return payload
+
+# ---------------- SHOCK SIMULATION ----------------
+@app.get("/simulate")
+def simulate(
+    vix_shock: float = 0.0,
+    rate_shock: float = 0.0,
+    sector_shock: float = 0.0
+):
+    g = calculate_global()
+    s = calculate_sectors()
+
+    shocked_global_state = round(
+        g["state"] + vix_shock * 0.01 + rate_shock * 0.005,
+        4
+    )
+
+    shocked_sector_states = []
+    for sec in s:
+        shocked_sector_states.append(sec["state"] + sector_shock * 0.01)
+
+    avg_sector = sum(shocked_sector_states) / len(shocked_sector_states)
+
+    payload = build_systemic_payload(
+        global_state=max(shocked_global_state, 0.0001),
+        avg_sector=max(avg_sector, 0.0001),
+        threshold=0.05,
+        add_noise=False
+    )
+
+    payload["simulation"] = {
+        "vix_shock": vix_shock,
+        "rate_shock": rate_shock,
+        "sector_shock": sector_shock,
+    }
+    payload["interpretation"] = "Simulated scenario based on user shock inputs."
+
+    return payload
+
+# ---------------- API ----------------
 @app.get("/global")
 def get_global():
     return calculate_global()
-
 
 @app.get("/sectors")
 def get_sectors():
     return calculate_sectors()
 
-
 @app.get("/systemic")
 def get_systemic():
     return calculate_systemic()
-
 
 @app.get("/live_history")
 def get_live_history():
     return list(live_systemic_history)
 
-
 @app.get("/history")
 def get_history():
     return [
-        {"date": "2007-07", "state": 0.02, "threshold": 0.03},
-        {"date": "2007-08", "state": 0.03, "threshold": 0.03},
-        {"date": "2008-01", "state": 0.035, "threshold": 0.03},
-        {"date": "2008-03", "state": 0.05, "threshold": 0.03},
-        {"date": "2008-09", "state": 0.09, "threshold": 0.03},
-        {"date": "2008-10", "state": 0.1, "threshold": 0.03},
-        {"date": "2009-01", "state": 0.04, "threshold": 0.03},
+        {"date": "2007-07", "state": 0.02, "event": "Pre-crisis calm"},
+        {"date": "2007-08", "state": 0.03, "event": "Credit stress begins"},
+        {"date": "2008-01", "state": 0.035, "event": "Subprime deterioration"},
+        {"date": "2008-03", "state": 0.05, "event": "Bear Stearns collapse"},
+        {"date": "2008-07", "state": 0.07, "event": "Systemic stress rising"},
+        {"date": "2008-09", "state": 0.09, "event": "Lehman Brothers collapse"},
+        {"date": "2008-10", "state": 0.1, "event": "Global panic peak"},
+        {"date": "2009-01", "state": 0.04, "event": "Post-crisis stabilization"},
     ]
-
 
 @app.get("/")
 def root():
