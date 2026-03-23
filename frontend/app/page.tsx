@@ -1,128 +1,102 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  ResponsiveContainer,
-  ReferenceLine,
-} from "recharts";
+import { useState } from "react"
+
+function computeState(hrv: number, sleep: number, load: number, recovery: number) {
+  const base = 0.5
+
+  const hrvEffect = (hrv / 100) * 0.08
+  const sleepEffect = (sleep / 8) * 0.08
+  const loadEffect = load * 0.035
+  const recoveryEffect = recovery * 0.05
+
+  const stateRaw = base + hrvEffect + sleepEffect + recoveryEffect - loadEffect
+  const state = Math.max(0, Math.min(1, stateRaw))
+
+  const velocityRaw =
+    hrvEffect * 0.25 +
+    sleepEffect * 0.25 +
+    recoveryEffect * 0.6 -
+    loadEffect * 0.7
+
+  const velocity = Number(velocityRaw.toFixed(4))
+
+  let trend = "Stable"
+  if (velocity < -0.01) trend = "⚠️ Pre-decline detected"
+  if (velocity > 0.01) trend = "Improving"
+
+  let timeToDecline = "No decline trajectory"
+  if (velocity < 0 && state > 0) {
+    timeToDecline = `${(state / Math.abs(velocity)).toFixed(1)} days`
+  }
+
+  return {
+    state: Number(state.toFixed(3)),
+    velocity,
+    trend,
+    timeToDecline,
+  }
+}
+
+function statusLabel(state: number) {
+  if (state >= 0.7) return "Adaptive"
+  if (state >= 0.4) return "Stable"
+  if (state >= 0.2) return "Declining"
+  return "High Risk"
+}
 
 export default function Home() {
-  const [systemic, setSystemic] = useState<any>(null);
-  const [global, setGlobal] = useState<any>(null);
-  const [sectors, setSectors] = useState<any[]>([]);
-  const [liveHistory, setLiveHistory] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
+  const [shock, setShock] = useState(0)
+  const [recovery, setRecovery] = useState(0)
 
-  const load = () => {
-    fetch("http://127.0.0.1:8000/systemic").then(r => r.json()).then(setSystemic);
-    fetch("http://127.0.0.1:8000/global").then(r => r.json()).then(setGlobal);
-    fetch("http://127.0.0.1:8000/sectors").then(r => r.json()).then(setSectors);
-    fetch("http://127.0.0.1:8000/live_history").then(r => r.json()).then(setLiveHistory);
-    fetch("http://127.0.0.1:8000/history").then(r => r.json()).then(setHistory);
-  };
-
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (!systemic || !global) return <div>Loading...</div>;
-
-  const color =
-    systemic.status === "Systemic Crisis"
-      ? "#ef4444"
-      : systemic.status === "Shock Acceleration"
-      ? "#dc2626"
-      : systemic.status === "Pre-Crisis Warning"
-      ? "#f59e0b"
-      : "#22c55e";
+  const userA = computeState(70, 7.5, 3 + shock, 2 + recovery)
+  const userB = computeState(35, 6, 7 + shock, 0.5 + recovery)
 
   return (
-    <main style={{ padding: 20, background: "#030712", color: "white" }}>
-      <h1 style={{ fontSize: 32 }}>Recursive Instability Engine</h1>
+    <div style={{ padding: 24, fontFamily: "Arial" }}>
+      <h1>Wearable Entropy Engine — Predictive View</h1>
 
-      {/* ALERT */}
-      <div style={{ marginTop: 20, padding: 15, borderRadius: 10, background: color }}>
-        🚨 {systemic.status}
+      <h2>Shock Simulation</h2>
+      <input
+        type="range"
+        min="0"
+        max="5"
+        value={shock}
+        onChange={(e) => setShock(Number(e.target.value))}
+      />
+      <div>Shock Level: {shock}</div>
+
+      <h2 style={{ marginTop: 20 }}>Recovery Simulation</h2>
+      <input
+        type="range"
+        min="0"
+        max="5"
+        value={recovery}
+        onChange={(e) => setRecovery(Number(e.target.value))}
+      />
+      <div>Recovery Level: {recovery}</div>
+
+      <hr />
+
+      <h2>Latest State</h2>
+
+      <div style={{ display: "flex", gap: 40 }}>
+        <div>
+          <h3>User A</h3>
+          <div>State: {userA.state} — {statusLabel(userA.state)}</div>
+          <div>Velocity: {userA.velocity}</div>
+          <div>{userA.trend}</div>
+          <div>{userA.timeToDecline}</div>
+        </div>
+
+        <div>
+          <h3>User B</h3>
+          <div>State: {userB.state} — {statusLabel(userB.state)}</div>
+          <div>Velocity: {userB.velocity}</div>
+          <div>{userB.trend}</div>
+          <div>{userB.timeToDecline}</div>
+        </div>
       </div>
-
-      {/* SYSTEMIC */}
-      <h2 style={{ marginTop: 20 }}>Systemic Risk</h2>
-
-      <div style={{ fontSize: 30 }}>
-        {systemic.value}% — {systemic.status}
-      </div>
-
-      <div>State: {systemic.state}</div>
-      <div>Threshold: {systemic.threshold}</div>
-
-      <div>⚡ Velocity: {systemic.velocity}</div>
-      <div>🚀 Acceleration: {systemic.acceleration}</div>
-      <div>⏱ Time to Threshold: {systemic.time_to_threshold ?? "N/A"}</div>
-
-      {/* LIVE */}
-      <h2 style={{ marginTop: 30 }}>Live Systemic Trend</h2>
-
-      <div style={{ width: "100%", height: 300 }}>
-        <ResponsiveContainer>
-          <LineChart data={liveHistory}>
-            <CartesianGrid stroke="#1f2937" />
-            <XAxis dataKey="date" />
-            <YAxis />
-            <Tooltip />
-            <ReferenceLine y={0.05} stroke="#f59e0b" />
-            <Line type="monotone" dataKey="state" stroke={color} strokeWidth={3} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* GLOBAL */}
-      <h2 style={{ marginTop: 30 }}>Global</h2>
-      <div>{global.value}% — {global.status}</div>
-      <div>VIX: {global.vix}</div>
-
-      {/* SECTORS */}
-      <h2 style={{ marginTop: 30 }}>Sectors</h2>
-      <div style={{ display: "flex", gap: 20 }}>
-        {sectors.map(s => (
-          <div key={s.name}>
-            <strong>{s.name}</strong>
-            <div>{s.value}%</div>
-            <div>{s.status}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* HISTORICAL */}
-      <h2 style={{ marginTop: 40 }}>Historical Crisis Reference</h2>
-
-      <div style={{ width: "100%", height: 300 }}>
-        <ResponsiveContainer>
-          <LineChart data={history}>
-            <CartesianGrid stroke="#1f2937" />
-            <XAxis dataKey="date" angle={-30} textAnchor="end" interval="preserveStartEnd" />
-            <YAxis />
-            <Tooltip />
-
-            <ReferenceLine y={0.03} stroke="#f59e0b" strokeDasharray="4 4" />
-
-            <ReferenceLine x="2007-08" stroke="#8884d8" label="Stress" />
-            <ReferenceLine x="2008-03" stroke="#ef4444" label="Bear" />
-            <ReferenceLine x="2008-09" stroke="#dc2626" label="Lehman" />
-            <ReferenceLine x="2008-10" stroke="#991b1b" label="Panic" />
-
-            <Line type="monotone" dataKey="state" stroke="#60a5fa" strokeWidth={3} />
-            <Line type="monotone" dataKey="threshold" stroke="#f59e0b" dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </main>
-  );
+    </div>
+  )
 }
